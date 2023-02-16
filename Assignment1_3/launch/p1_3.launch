@@ -1,0 +1,7 @@
+<launch>
+
+	<node pkg="turtlesim" name="sim" type="turtlesim_node"> </node>
+	<node pkg="Assignment1_3" name="runner" type="runner.py">  </node>
+	<node pkg="Assignment1_3" name="hunter" type="hunter.py"> </node>
+
+</launch>

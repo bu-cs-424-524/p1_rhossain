@@ -1,51 +1,73 @@
 #!/usr/bin/env python3
 
 import rospy
-import random
+import time
 import math
+
+from turtlesim.srv import *
+
 from geometry_msgs.msg import Twist
-from turtlesim.msg import Pose
-from turtlesim.srv import Spawn, SpawnRequest
+from std_msgs.msg import *
+from turtlesim.msg import *
+import random
 
-# Callback function for the runner turtle's pose
-def runner_pose_callback(pose_message):
-    global runner_x, runner_y, runner_theta
-    runner_x = pose_message.x
-    runner_y = pose_message.y
-    runner_theta = pose_message.theta
+class Runner:
+    def __init__(self):
+        rospy.wait_for_service('/spawn')
+        self.spawn_runner = rospy.ServiceProxy('/spawn', Spawn)
+        self.spawn_runner(7,1,0,"runner_turtle")
 
-# Function to move the runner turtle with linear velocity [1, 0, 0]
-def move_runner():
-    velocity_publisher = rospy.Publisher('turtle1/cmd_vel', Twist, queue_size=10)
-    vel_msg = Twist()
-    vel_msg.linear.x = 1
-    velocity_publisher.publish(vel_msg)
+        self.linear_velocity = 1
 
-# Function to spawn the hunter turtle
-def spawn_hunter():
-    rospy.wait_for_service('spawn')
-    try:
-        spawn_turtle = rospy.ServiceProxy('spawn', Spawn)
-        turtle_name = 'hunter'
-        x = random.uniform(0, 11)
-        y = random.uniform(0, 11)
-        theta = random.uniform(0, 2 * math.pi)
-        spawn_request = SpawnRequest(x=x, y=y, theta=theta, name=turtle_name)
-        spawn_turtle(spawn_request)
-    except rospy.ServiceException as e:
-        print("Service call failed: %s" % e)
+        self.velocity_publisher = rospy.Publisher('/runner_turtle/cmd_vel', Twist, queue_size=10)
+        self.vel_msg = Twist()
 
-if __name__ == '__main__':
-    # Initialize the ROS node for the runner
-    rospy.init_node('runner_controller')
+        self.hunter_pose_subscriber = rospy.Subscriber('/hunter/pose', Pose, self.update_hunter_pose)
+        self.runner_pose_subscriber = rospy.Subscriber('/runner/pose', Pose, self.update_runner_pose)
 
-    # Subscribe to the runner turtle's pose
-    runner_pose_subscriber = rospy.Subscriber('turtle1/pose', Pose, runner_pose_callback)
+        self.hunter_pose = Pose(1, 1, 0, 0, 0)
+        self.runner_pose = Pose(7, 5, 0, 0, 0)
 
-    # Spawn the hunter turtle
-    spawn_hunter()
+        rospy.wait_for_service('/kill')
+        self.kill_runner = rospy.ServiceProxy('/kill', Kill)
+        
+    def update_hunter_pose(self, coord):
+        self.hunter_pose = coord
 
-    rate = rospy.Rate(10)
-    while not rospy.is_shutdown():
-        move_runner()
-        rate.sleep()
+    def update_runner_pose(self, coord):
+        self.runner_pose = coord
+    
+    def runner_hunter_distance(self):
+        return math.sqrt((self.hunter_pose.x - self.runner_pose.x) ** 2 + (self.hunter_pose.y - self.runner_pose.y) ** 2)
+    
+    def run(self):
+        self.kill_runner('turtle1')
+        self.vel_msg.linear.x = self.linear_velocity
+
+        while True:
+            anglular_velocity = random.random()*2 - 1
+
+            self.vel_msg.angular.z = anglular_velocity
+
+            t0 = rospy.Time.now().to_sec()
+            t1 = rospy.Time.now().to_sec()
+
+            while t1-t0 < 2:
+                t1=rospy.Time.now().to_sec()
+                self.velocity_publisher.publish(self.vel_msg)
+
+                if self.runner_hunter_distance() < 1:
+                    self.kill()
+                    self.runner_pose.y = 100000
+
+    def kill(self):
+        self.kill_runner('runner_turtle')
+        self.spawn_runner(random.random()*9,random.random()*9,0,"runner_turtle")
+
+if __name__ == "__main__":
+    rospy.init_node('run')
+
+    runner = Runner()
+    runner.run()
+
+    rospy.spin()

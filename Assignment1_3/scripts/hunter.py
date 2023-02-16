@@ -1,58 +1,63 @@
 #!/usr/bin/env python3
 
 import rospy
+import time
 import math
-import random
-from turtlesim.msg import Pose
+from turtlesim.srv import *
 from geometry_msgs.msg import Twist
-from turtlesim.srv import GetPose
+from std_msgs.msg import Bool
+from turtlesim.msg import Pose
 
-# Callback function for the hunter turtle's pose
-def hunter_pose_callback(pose_message):
-    global hunter_x, hunter_y, hunter_theta
-    hunter_x = pose_message.x
-    hunter_y = pose_message.y
-    hunter_theta = pose_message.theta
+class Hunter:
+    def __init__(self):
+        rospy.wait_for_service('/spawn')
+        spawn_hunter = rospy.ServiceProxy('/spawn', Spawn)
+        spawn_hunter(1, 1, 0, "hunter_turtle")
 
-# Function to move the hunter turtle towards the runner
-def move_towards_runner(runner_x, runner_y):
-    global hunter_x, hunter_y
-    velocity_publisher = rospy.Publisher('hunter/cmd_vel', Twist, queue_size=10)
-    vel_msg = Twist()
+        rospy.wait_for_service('/kill')
+        self.kill_hunter = rospy.ServiceProxy('/kill', Kill)
 
-    # Calculate the distance to the runner
-    distance = math.sqrt((runner_x - hunter_x)**2 + (runner_y - hunter_y)**2)
+        self.linear_velocity = 2
+        self.velocity_pub = rospy.Publisher('/hunter_turtle/cmd_vel', Twist, queue_size=10)
+        self.kill_pub = rospy.Publisher('/hunter_turtle/kill_runner', Bool, queue_size=1)
+        self.vel_msg = Twist()
+        self.vel_msg.linear.x = self.linear_velocity
 
-    # Limit the hunter's maximum linear velocity
-    if distance > 1:
-        vel_msg.linear.x = 1
-    else:
-        vel_msg.linear.x = distance
+        self.hunter_pos_subscriber = rospy.Subscriber('/hunter_turtle/pose', Pose, self.update_hunter_pose)
+        self.runner_pose_subscriber = rospy.Subscriber('/runner_turtle/pose', Pose, self.update_runner_pose)
 
-    # Set the hunter's angular velocity to a random value between -1 and 1
-    vel_msg.angular.z = random.uniform(-1, 1)
-    velocity_publisher.publish(vel_msg)
+        self.hunter_pose = Pose(1, 1, 0, 0, 0)
+        self.runner_pose = Pose(1, 1, 0, 0, 0)
 
-if __name__ == '__main__':
-    # Initialize the ROS node for the hunter
-    rospy.init_node('hunter_controller')
+        self.max_ang_vel = 2
+        
+    def start_hunt(self):
+        while True:
+            cur_ang = self.hunter_pose.theta
 
-    # Subscribe to the hunter turtle's pose
-    hunter_pose_subscriber = rospy.Subscriber('hunter/pose', Pose, hunter_pose_callback)
+            x = self.hunter_pose.x - self.runner_pose.x
+            y = self.hunter_pose.y - self.runner_pose.y
+            req_ang = math.atan2(y, x)
 
-    # Loop to continuously follow the runner turtle
-    while not rospy.is_shutdown():
-        try:
-            # Get the runner turtle's position using the /turtle1/pose service
-            rospy.wait_for_service('/turtle1/get_pose')
-            get_pose = rospy.ServiceProxy('/turtle1/get_pose', GetPose)
-            runner_pose = get_pose()
-            runner_x = runner_pose.x
-            runner_y = runner_pose.y
+            direction = 0
+            if req_ang - cur_ang != 0:
+                direction = -1 * (req_ang - cur_ang)/abs(req_ang - cur_ang)
 
-            move_towards_runner(runner_x, runner_y)
+            ang_vel = abs(req_ang - cur_ang)/math.pi
+            if ang_vel > 1:
+                ang_vel -= 2
 
-        except rospy.ServiceException as e:
-            print("Service call failed: %s"%e)
-        except rospy.exceptions.ROSInterruptException:
-            pass
+            self.vel_msg.angular.z = direction * ang_vel * self.max_ang_vel
+            self.velocity_pub.publish(self.vel_msg)
+
+    def update_hunter_pose(self, pos):
+        self.hunter_pose = pos
+
+    def update_runner_pose(self, pos):
+        self.runner_pose = pos
+        
+if __name__ == "__main__":
+    rospy.init_node('hunt')
+    hunter = Hunter()
+    hunter.start_hunt()
+    rospy.spin()
