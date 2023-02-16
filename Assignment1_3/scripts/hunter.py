@@ -3,7 +3,7 @@
 import rospy
 import time
 import math
-from turtlesim.srv import *
+from turtlesim.srv import Spawn, Kill
 from geometry_msgs.msg import Twist
 from std_msgs.msg import Bool
 from turtlesim.msg import Pose
