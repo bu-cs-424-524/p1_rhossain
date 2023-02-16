@@ -5,13 +5,9 @@ from geometry_msgs.msg import Twist
 from turtlesim.srv import TeleportAbsolute
  
  
-def turtle_circle():
+def turtle_draw():
     rospy.init_node('turtlesim', anonymous=True)
      # Draw the letter "R"
-    rospy.wait_for_service('turtle1/teleport_absolute')
-    turtle_teleport = rospy.ServiceProxy('turtle1/teleport_absolute', TeleportAbsolute)
-    
-
     pub = rospy.Publisher('/turtle1/cmd_vel',
                           Twist, queue_size=10)
     rate = rospy.Rate(10)
@@ -60,6 +56,7 @@ def turtle_circle():
         vel.angular.z = 0
         pub.publish(vel)
         rate.sleep()
+        
     ## draw H
     for i in range(25):
         vel.angular.z = 1
@@ -114,6 +111,6 @@ def turtle_circle():
     
 if __name__ == '__main__':
     try:
-        turtle_circle()
+        turtle_draw()
     except rospy.ROSInterruptException:
         pass
