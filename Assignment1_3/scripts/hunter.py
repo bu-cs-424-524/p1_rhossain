@@ -1,63 +1,70 @@
 #!/usr/bin/env python3
 
 import rospy
-import time
-import math
 from turtlesim.srv import Spawn, Kill
 from geometry_msgs.msg import Twist
 from std_msgs.msg import Bool
 from turtlesim.msg import Pose
+import math
+
 
 class Hunter:
     def __init__(self):
+        ## initialising the turtle
         rospy.wait_for_service('/spawn')
-        spawn_hunter = rospy.ServiceProxy('/spawn', Spawn)
-        spawn_hunter(1, 1, 0, "hunter_turtle")
+        spnHunt = rospy.ServiceProxy('/spawn', Spawn)
+        spnHunt(3, 2, 0, "hunter_turtle")
 
+        # a service to kill the turtle
         rospy.wait_for_service('/kill')
-        self.kill_hunter = rospy.ServiceProxy('/kill', Kill)
+        self.killHunter = rospy.ServiceProxy('/kill', Kill)
 
-        self.linear_velocity = 2
-        self.velocity_pub = rospy.Publisher('/hunter_turtle/cmd_vel', Twist, queue_size=10)
-        self.kill_pub = rospy.Publisher('/hunter_turtle/kill_runner', Bool, queue_size=1)
-        self.vel_msg = Twist()
-        self.vel_msg.linear.x = self.linear_velocity
+        ## subscribing to the pose topic for the both turtle
+        self.huntPoseSub = rospy.Subscriber('/hunter_turtle/pose', Pose, self.update_huntPose)
+        self.runPoseSub = rospy.Subscriber('/runner_turtle/pose', Pose, self.update_runPose)
 
-        self.hunter_pos_subscriber = rospy.Subscriber('/hunter_turtle/pose', Pose, self.update_hunter_pose)
-        self.runner_pose_subscriber = rospy.Subscriber('/runner_turtle/pose', Pose, self.update_runner_pose)
+        self.huntPose = Pose(2, 2, 0, 0, 0)
+        self.runPose = Pose(1, 1, 0, 0, 0)
 
-        self.hunter_pose = Pose(1, 1, 0, 0, 0)
-        self.runner_pose = Pose(1, 1, 0, 0, 0)
+        ## publishing to the cmd_vel topic for both tutrtle
+        self.linVel = 2
+        self.velPub = rospy.Publisher('/hunter_turtle/cmd_vel', Twist, queue_size=10)
+        self.killPub = rospy.Publisher('/hunter_turtle/kill_runner', Bool, queue_size=1)
+        self.velMsg = Twist()
+        self.velMsg.linear.x = self.linVel
 
-        self.max_ang_vel = 2
+        self.angVelMax = 2
+
+    def update_huntPose(self, pos):
+        self.huntPose = pos
+
+    def update_runPose(self, pos):
+        self.runPose = pos
         
-    def start_hunt(self):
+        
+    def hunting(self):
         while True:
-            cur_ang = self.hunter_pose.theta
+            curntAng = self.huntPose.theta
 
-            x = self.hunter_pose.x - self.runner_pose.x
-            y = self.hunter_pose.y - self.runner_pose.y
-            req_ang = math.atan2(y, x)
+            x = self.huntPose.x - self.runPose.x
+            y = self.huntPose.y - self.runPose.y
+            reqAng = math.atan2(y, x)
 
             direction = 0
-            if req_ang - cur_ang != 0:
-                direction = -1 * (req_ang - cur_ang)/abs(req_ang - cur_ang)
+            if reqAng - curntAng != 0:
+                direction = -1 * (reqAng - curntAng)/abs(reqAng - curntAng)
 
-            ang_vel = abs(req_ang - cur_ang)/math.pi
+            ang_vel = abs(reqAng - curntAng)/math.pi
             if ang_vel > 1:
                 ang_vel -= 2
 
-            self.vel_msg.angular.z = direction * ang_vel * self.max_ang_vel
-            self.velocity_pub.publish(self.vel_msg)
+            self.velMsg.angular.z = direction * ang_vel * self.angVelMax
+            self.velPub.publish(self.velMsg)
 
-    def update_hunter_pose(self, pos):
-        self.hunter_pose = pos
 
-    def update_runner_pose(self, pos):
-        self.runner_pose = pos
-        
 if __name__ == "__main__":
-    rospy.init_node('hunt')
+    rospy.init_node('hunter')
+    rospy.loginfo("Hunter node initialised")
     hunter = Hunter()
-    hunter.start_hunt()
+    hunter.hunting()
     rospy.spin()
